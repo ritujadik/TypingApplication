@@ -1,12 +1,15 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const nodemailer = require('nodemailer');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const paragraphRoutes = require('./routes/ParagraphRoutes');
 const Result = require('./models/result'); // ✅ Import your result model
 
 const app = express();
+
+
 
 app.use(cors());
 app.use(express.json());
