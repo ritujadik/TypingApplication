@@ -545,40 +545,39 @@ function Dashboard() {
     await saveResultsToAPI(results);
   };
 
-  const saveResultsToAPI = async(resultsData)=>{
-    try {
-      const token = localStorage.getItem("token");
+ const saveResultsToAPI = async (resultsData) => {
+  try {
+    const token = localStorage.getItem("token");
 
-      const response = await fetch(`${API_BASE_URL}/api/save-result`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          userName:user?.username,
-          wordsTyped:resultsData.typedWords,
-          accuracy:resultsData.accuracy,
-          timeTaken:resultsData.timeTaken,
-          language:currentLanguage,
-          font:currentFont
-        }),
-      });
-      const text = await response.text();
-      let data;
-      try{
-        data = JSON.parse(text);
-      }catch {
-      console.warn("Backend returned non-JSON response:", text);
-      data = { message: text || "Unknown response" };
+    const response = await fetch(`${process.env.REACT_APP_API_URL}/api/save-result`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        userName: user?.username,
+        wordsTyped: resultsData.typedWords,
+        accuracy: resultsData.accuracy,
+        timeTaken: resultsData.timeTaken,
+        language: currentLanguage,
+        font: currentFont,
+      }),
+    });
+
+    // Check if the response is OK before parsing JSON
+    if (!response.ok) {
+      const text = await response.text(); // read raw text for debugging
+      console.error("API returned error:", text);
+      throw new Error("Failed to save results");
     }
-      console.log("Saved result response:",data);
-      alert(data.message || "Result saved successfully!");
-    }catch(error){
-      console.error("Error saving results:",error);
-      alert("Error saving results. Please try again.");
-    }
-  };
+
+    const data = await response.json();
+    console.log("Saved:", data);
+  } catch (error) {
+    console.error("Error saving results:", error);
+  }
+};
 
   // Calculate results
   const calculateResults = () => {
