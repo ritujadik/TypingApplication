@@ -533,14 +533,42 @@ function Dashboard() {
   }, [testStarted, timeLeft, selectedTime]);
 
   // End test
-  const endTest = () => {
+  const endTest = async() => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
     setTestStarted(false);
     setTestCompleted(true);
-    calculateResults();
+    const results = calculateResults(); 
+    // calculateResults();
     setShowResults(true);
+    await saveResultsToAPI(results);
+  };
+
+  const saveResultsToAPI = async(resultsData)=>{
+    try {
+      const token = localStorage.getItem("token");
+
+      const response = await fetch(`${API_BASE_URL}/api/save-result`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          userName:user?.username,
+          wordsTyped:resultsData.typedWords,
+          accuracy:resultsData.accuracy,
+          timeTaken:resultsData.timeTaken,
+          language:currentLanguage,
+          font:currentFont
+        }),
+      });
+      const data = await response.json();
+      console.log("Saved:",data);
+    }catch(error){
+      console.error("Error saving results:",error);
+    }
   };
 
   // Calculate results
@@ -715,26 +743,24 @@ function Dashboard() {
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/results/save`, {
+      const response = await fetch(`${API_BASE_URL}/save-result`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          testType,
-          language: currentLanguage,
-          font: currentFont,
-          timeDuration: selectedTime,
-          passageLength: selectedPassage,
-          mockTest: selectedMock,
-          results: testResults,
-          timestamp: new Date().toISOString(),
+           userName: user?.username || user?.email,
+           wordsTyped: testResults.typedWords,
+           accuracy: testResults.accuracy,
+           timeTaken: Math.round(testResults.timeTaken),
+           font: currentFont,
+           language: currentLanguage,
         }),
       });
 
       const data = await response.json();
-      if (data.success) {
+      if (response.ok) {
         alert("Results saved successfully!");
       } else {
         alert("Failed to save results.");

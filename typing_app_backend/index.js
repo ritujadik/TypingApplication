@@ -3,9 +3,12 @@ const express = require('express');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
 const connectDB = require('./config/db');
+const mongoose = require('mongoose');
+const User = require('./models/User'); // ✅ Import your user model
 const authRoutes = require('./routes/authRoutes');
 const paragraphRoutes = require('./routes/ParagraphRoutes');
 const Result = require('./models/result'); // ✅ Import your result model
+
 
 const app = express();
 
@@ -15,11 +18,17 @@ app.use(cors());
 app.use(express.json());
 
 // Connect to Database
-connectDB();
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('✅ MongoDB connected'))
+.catch(err => console.error('❌ MongoDB connection error:', err));    
 
 // Routes
 app.use('/api', authRoutes);
 app.use('/api', paragraphRoutes);
+
 
 // ✅ Save Typing Result Route
 app.post('/api/save-result', async (req, res) => {

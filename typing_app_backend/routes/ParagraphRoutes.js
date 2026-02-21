@@ -221,4 +221,8 @@ router.get('/mocks/:language', async (req, res) => {
         });
     }
 });
+router.get('/test', (req, res) => {
+    res.json({ message: "Test endpoint is working!" });
+});
+
 module.exports = router;
