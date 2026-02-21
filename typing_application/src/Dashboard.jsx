@@ -66,7 +66,7 @@ function Dashboard() {
   const forceRenderRef = useRef(false);
 
   // API base URL
-  const API_BASE_URL = process.env.REACT_APP_API_URL || "https://typingapplication-1.onrender.com/api";
+  const API_BASE_URL = "https://typingapplication-1.onrender.com/api";
 
   // All available fonts for government exams
   const allFonts = {
@@ -751,7 +751,7 @@ function Dashboard() {
         return;
       }
 
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/save-result`, {
+      const response = await fetch(`${API_BASE_URL}/save-result`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -774,7 +774,7 @@ function Dashboard() {
         alert("Failed to save results.");
       }
     } catch (error) {
-      console.error("Error saving results:", error);
+      // console.error("Error saving results:", error);
       alert("Error saving results. Please try again.");
     }
   };
