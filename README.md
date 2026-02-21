@@ -1,5 +1,7 @@
 **A full-stack Typing Speed Test application built using the MERN Stack.
 Users can take typing tests, track accuracy, and save results securely to MongoDB Atlas.****
+**Project Link**-"https://typingapplication-new-frontend.onrender.com/"
+
 **Features**
 User Authentication (Signup / Login)
 JWT-based secure authentication
@@ -27,6 +29,8 @@ JWT Authentication
 **Deployment**
 Render(Frontend + Backend)
 MongoDB Atlas(Cloud Database)
+frontend link-https://typingapplication-new-frontend.onrender.com/
+backend link-https://typingapplication-1.onrender.com/
 
 **Project Demonstrates**
 Full-stack MERN development
@@ -56,7 +60,7 @@ PORT=5000
 MONGO_URI="your credential"
 JWT_SECRET=your_secret_key**
 **Frontend(.env)**
-REACT_APP_API_URL=https://typingapplication-1.onrender.com
+REACT_APP_API_URL=deployed backend url
 
 **Author**
 Rituja Dikshit
