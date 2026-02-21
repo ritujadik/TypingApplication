@@ -66,7 +66,7 @@ function Dashboard() {
   const forceRenderRef = useRef(false);
 
   // API base URL
-  const API_BASE_URL = "http://localhost:5000/api";
+  const API_BASE_URL = process.env.REACT_APP_API_URL || "https://typingapplication-1.onrender.com/api";
 
   // All available fonts for government exams
   const allFonts = {
@@ -564,10 +564,19 @@ function Dashboard() {
           font:currentFont
         }),
       });
-      const data = await response.json();
-      console.log("Saved:",data);
+      const text = await response.text();
+      let data;
+      try{
+        data = JSON.parse(text);
+      }catch {
+      console.warn("Backend returned non-JSON response:", text);
+      data = { message: text || "Unknown response" };
+    }
+      console.log("Saved result response:",data);
+      alert(data.message || "Result saved successfully!");
     }catch(error){
       console.error("Error saving results:",error);
+      alert("Error saving results. Please try again.");
     }
   };
 
