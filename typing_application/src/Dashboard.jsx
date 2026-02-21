@@ -743,7 +743,7 @@ function Dashboard() {
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/save-result`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/save-result`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

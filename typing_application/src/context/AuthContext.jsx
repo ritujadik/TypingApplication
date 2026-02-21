@@ -16,7 +16,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem("token") || null);
 
-  const API_BASE_URL = "http://localhost:5000/api";
+  const API_BASE_URL = process.env.REACT_APP_API_URL || "https://typingapplication-1.onrender.com/api";
 
   // Check if user is logged in on initial load
   useEffect(() => {
@@ -27,9 +27,9 @@ export const AuthProvider = ({ children }) => {
       if (storedToken && storedUser) {
         try {
           // Verify token with backend
-          const response = await axios.get(`${API_BASE_URL}/verify-token`, {
+          const response = await axios.get(`${API_BASE_URL}/login`,credentials, {
             headers: {
-              Authorization: `Bearer ${storedToken}`,
+              "Content-Type": "application/json",
             },
           });
 
