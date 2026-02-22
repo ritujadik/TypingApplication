@@ -16,7 +16,7 @@ function Dashboard() {
       logout: () => {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
-        window.location.href = "/login";
+        window.location.href = "https://typingapplication-1.onrender.com/login";
       },
       loading: false,
     };
@@ -791,7 +791,7 @@ function Dashboard() {
   const handleLogout = () => {
     if (window.confirm("Are you sure you want to logout?")) {
       logout();
-      window.location.href = "/login";
+      window.location.href = "https://typingapplication-1.onrender.com/login";
     }
   };
 
