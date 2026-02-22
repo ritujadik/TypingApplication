@@ -3,7 +3,7 @@ import "./App.css";
 import { FontRenderer } from "./components/FontRenderer";
 import ResultPage from "./components/ResultPage";
 import { useAuth } from "./context/AuthContext";
-import { useNavigate } from "react-router-dom";
+// import { useNavigate } from "react-router-dom";
 
 function Dashboard() {
   // ✅ Safely get auth context with fallback
@@ -797,7 +797,9 @@ const handleLogout = () => {
   logout();
 
   // Redirect immediately to frontend login page
-  navigator("/login");
+  window.location.href = "https://typingapplication-1.onrender.com/api/login";
+};
+
   // ✅ Show loading while auth is loading
   if (loading) {
     return (
@@ -1166,5 +1168,6 @@ const handleLogout = () => {
       </div>
     </div>
   );
-}}
+}
+
 export default Dashboard;
