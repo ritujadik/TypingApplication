@@ -1166,6 +1166,5 @@ const handleLogout = () => {
       </div>
     </div>
   );
-}
-
+}}
 export default Dashboard;
