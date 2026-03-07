@@ -9,59 +9,68 @@ const Signup = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [mobileError, setMobileError] = useState("");
   const navigate = useNavigate();
   const { signup } = useAuth();
+
+
+const validateMobile = (value) => {
+    const mobileRegex = /^[6-9]\d{9}$/;
+    setMobile(value);
+
+    if (!mobileRegex.test(value)) {
+      setMobileError("Please enter a valid 10-digit mobile number!!!");
+    }else{
+      setMobileError("");
+    }
+  }
+
+   const validateEmail = (value) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    setEmail(value);
+    if (!emailRegex.test(value)) {
+    setEmailError("Please enter a valid email address");
+  } else {
+    setEmailError("");
+  }
+};
 
   const handleSignup = async () => {
     if (!username || !mobile || !email || !password) {
       alert("All fields are required");
       return;
     }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      alert("Please enter a valid email address");
-      return;
-    }
-
-    if (mobile.length !== 10) {
-      alert("Mobile number must be 10 digits");
-      return;
-    }
-
     if (password.length < 6) {
       alert("Password must be at least 6 characters");
       return;
     }
-
     setLoading(true);
+    try{
+      const credentials = { username, mobile, email, password };
 
-    const userData = {
-      username,
-      mobile,
-      email,
-      password,
-    };
+      const result = await signup(credentials);
 
-    const result = await signup(userData);
-
-    setLoading(false);
-
-    if (result.success) {
-      alert("Signup successful! Please login.");
-      navigate("/login");
-    } else {
-      alert(result.message || "Signup failed. Please try again.");
+      if (result.success) {
+        alert("Signup successful! Please login.");
+        navigate("/login");
+      } else {
+        alert(result.message);
+      }
+    }catch(error) {
+      const apiError = error?.response?.data?.message || error?.response?.data?.error ||error.message || "Signup failed. Please try again.";
+      
+      alert(apiError);  
+      console.log("API Error:", apiError);
     }
-  };
-
+      setLoading(false);
+    }
   const handleReset = () => {
     setUsername("");
     setMobile("");
     setEmail("");
     setPassword("");
   };
-
   return (
     <div className="auth-container">
       <div className="auth-card">
@@ -88,19 +97,11 @@ const Signup = () => {
               type="text"
               placeholder="Enter 10-digit mobile number"
               value={mobile}
-              onChange={(e) => {
-                const mobileRegex = /^[0-9]*$/;
-                if (!mobileRegex.test(e.target.value)) {
-                  alert("Please enter only numeric values");
-                  return;
-                }
-                if (e.target.value.length > 10) {
-                  setMobile(e.target.value.slice(0, 10));
-                  return;
-                }
-                setMobile(e.target.value);
-              }}
+              onChange={(e) => setMobile(e.target.value)}
+              onBlur={(e) => validateMobile(e.target.value)}
             />
+            {mobileError && <p style={{ color: "red" }}>{mobileError}</p> 
+}
           </div>
 
           <div className="form-group">
@@ -109,10 +110,10 @@ const Signup = () => {
               type="email"
               placeholder="Enter your email"
               value={email}
-              autoComplete="off"
-              name="user_email"
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={(e) => validateEmail(e.target.value)}
             />
+            {emailError && <p style={{ color: "red" }}>{emailError}</p>}
           </div>
 
           <div className="form-group">

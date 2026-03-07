@@ -16,7 +16,8 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem("token") || null);
 
-  const API_BASE_URL = "https://typingapplication-1.onrender.com/api";
+  // const API_BASE_URL = "https://typingapplication-1.onrender.com/api";
+  const API_BASE_URL = "http://localhost:5000/api";
 
   // Check if user is logged in on initial load
   useEffect(() => {
@@ -118,42 +119,52 @@ export const AuthProvider = ({ children }) => {
   };
   // Signup function
   // AuthContext.jsx - updated signup function
-  const signup = async (userData) => {
-    try {
-      console.log("🔵 Sending signup request to:", `${API_BASE_URL}/signup`);
-      console.log("🔵 Request data:", JSON.stringify(userData, null, 2));
+  const signup = async (userdata) => {
+  try {
+    console.log("🔵 Sending signup request to:", `${API_BASE_URL}/signup`);
+    console.log("🔵 Request data:", JSON.stringify(userdata, null, 2));
 
-      const response = await axios.post(`${API_BASE_URL}/signup`, userData);
+    const response = await axios.post(`${API_BASE_URL}/signup`, userdata);
 
-      console.log("✅ Signup successful - Response:", response.data);
+    console.log("✅ Signup response:", response.data);
 
-      if (response.status === 201 || response.data.success) {
-        return {
-          success: true,
-          message: response.data.message || "Signup successful",
-        };
-      }
-
-      console.log("⚠️ Signup returned but not successful:", response.data);
+    // Check if response indicates success
+    if (response.status === 201 || response.data.success) {
       return {
-        success: false,
-        message: response.data.message || "Signup failed",
-      };
-    } catch (error) {
-      console.error("❌ Signup error details:");
-      console.error("Error message:", error.message);
-      console.error("Error status:", error.response?.status);
-      console.error("Error data:", error.response?.data);
-      console.error("Error config:", error.config?.data);
-
-      return {
-        success: false,
-        message:
-          error.response?.data?.message ||
-          "Signup failed. Please check your inputs and try again.",
+        success: true,
+        message: response.data.message || "Signup successful",
+        data: response.data,
       };
     }
-  };
+
+    // If response returned but not successful
+    return {
+      success: false,
+      message: response.data.message || "Signup failed",
+    };
+  } catch (error) {
+    console.error("❌ Signup error details:");
+    console.error("Error message:", error.message);
+    console.error("Error status:", error.response?.status);
+    console.error("Error data:", error.response?.data);
+    console.error("Error config:", error.config?.data);
+
+    // const apiMessage = typeof error.response?.data === "string"?error.response?.data: error.response?.data?.message || error.response?.data?.error || error.message || "Signup failed. Please try again.";
+  //   const apiMessage =
+  // typeof error.response?.data === "string"
+  //   ? error.response.data
+  //   : error.response?.data?.message || error.response?.data?.error || error.message || "Signup failed. Please try again.";
+  //   // Return the actual backend error if available
+    return {
+      success: false,
+      message:
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Signup failed. Please try again.",
+    };
+  }
+};
 
   // Logout function
   const logout = () => {

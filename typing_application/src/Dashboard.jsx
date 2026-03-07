@@ -3,9 +3,93 @@ import "./App.css";
 import { FontRenderer } from "./components/FontRenderer";
 import ResultPage from "./components/ResultPage";
 import { useAuth } from "./context/AuthContext";
-// import { useNavigate } from "react-router-dom";
+import { calculateTypingStats } from "../utils/typingstats";
+import { analyzeTypingLive } from "../utils/typing_engine";
+import { Navigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+
+// FIXED: HighlightedTextarea with perfect alignment
+const HighlightedTextarea = ({
+  value,
+  onChange,
+  onKeyDown,
+  disabled,
+  placeholder,
+  className,
+  fontClass,
+  incorrectWordPositions = [],
+  autoFocus
+}) => {
+  const textareaRef = useRef(null);
+  const highlightRef = useRef(null);
+
+  const handleScroll = (e) => {
+    if (highlightRef.current) {
+      highlightRef.current.scrollTop = e.target.scrollTop;
+      highlightRef.current.scrollLeft = e.target.scrollLeft;
+    }
+  };
+
+  useEffect(() => {
+    if (autoFocus && textareaRef.current && !disabled) {
+      textareaRef.current.focus();
+    }
+  }, [autoFocus, disabled]);
+
+  const getHighlightedHtml = () => {
+    if (!value) return "";
+
+    // normalize punctuation (same as typing engine)
+    const normalized = value
+      .replace(/([.,!?;:])/g, " $1 ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const tokens = normalized.split(" ");
+    const incorrectSet = new Set(incorrectWordPositions);
+
+    let result = "";
+tokens.forEach((token, index) => {
+  // Wrap any token that is in incorrect positions
+  if (incorrectSet.has(index)) {
+    result += `<span class="incorrect-word-highlight">${token}</span>`;
+  } else {
+    result += token;
+  }
+
+  // Add a single space after every token to preserve spacing
+  result += " ";
+});
+
+    return result;
+  };
+
+  return (
+    <div className="highlighted-textarea-wrapper">
+      <div
+        ref={highlightRef}
+        className={`highlight-layer ${fontClass}`}
+        dangerouslySetInnerHTML={{ __html: getHighlightedHtml() }}
+      />
+
+      <textarea
+        ref={textareaRef}
+        className={`${className} ${fontClass}`}
+        value={value}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        onScroll={handleScroll}
+        disabled={disabled}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+      />
+    </div>
+  );
+};
 
 function Dashboard() {
+
+  const navigate = useNavigate();
   // ✅ Safely get auth context with fallback
   let authContext;
   try {
@@ -17,13 +101,10 @@ function Dashboard() {
       logout: () => {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
-        window.location.href = "https://typingapplication-1.onrender.com/login";
+        navigate("/login",{replace: true});
       },
       loading: false,
     };
-  }
-  const LogoutButton = ()=>{
-    const navigate = useNavigate();
   }
 
   const { user, logout, loading } = authContext;
@@ -44,11 +125,14 @@ function Dashboard() {
   const [paragraphLoading, setParagraphLoading] = useState(false);
   const [paragraphError, setParagraphError] = useState("");
   const [showResults, setShowResults] = useState(false);
+  
+  // State for backspace/correction toggle
+  const [correctionEnabled, setCorrectionEnabled] = useState(true);
 
   // New dropdown states
-  const [selectedTime, setSelectedTime] = useState("2 Min");
+  const [selectedTime, setSelectedTime] = useState("5 Min");
   const [selectedPassage, setSelectedPassage] = useState(200);
-  const [selectedMock, setSelectedMock] = useState(1);
+  const [selectedMock, setSelectedMock] = useState("1");
   const [availableMocks, setAvailableMocks] = useState([]);
 
   // Result data state
@@ -57,20 +141,35 @@ function Dashboard() {
     accuracy: 0,
     totalWords: 0,
     typedWords: 0,
-    totalCharacters: 0,
-    correctCharacters: 0,
+    correctWords: 0,
+    incorrectWords: 0,
     timeTaken: 0,
-    errors: 0,
     date: new Date().toLocaleString(),
+  });
+
+  // Live typing stats for bottom display
+  const [liveStats, setLiveStats] = useState({
+    typedWords: 0,
+    totalWords: 0,
+    wpm: 0,
+    accuracy: 100,
+    correctWords: 0,
+    incorrectWords: 0,
+    incorrectWordPositions: [] 
   });
 
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
   const textareaRef = useRef(null);
   const forceRenderRef = useRef(false);
+  
+  // Track total typed words
+  const [totalTypedWords, setTotalTypedWords] = useState(0);
 
+  // // API base URL
+  // const API_BASE_URL = "http://localhost:5000/api";
   // API base URL
-  const API_BASE_URL = "https://typingapplication-1.onrender.com/api";
+  const API_BASE_URL = "https://typingapplication-1.onrender.com";
 
   // All available fonts for government exams
   const allFonts = {
@@ -179,10 +278,7 @@ function Dashboard() {
   };
 
   // Time options
-  const timeOptions = ["1 Min", "2 Min", "5 Min", "10 Min", "15 Min", "free"];
-
-  // Passage options
-  const passageOptions = [200, 300, 500, 1000];
+  const timeOptions = ["5 Min", "10 Min", "15 Min", "Free"];
 
   // Initialize
   useEffect(() => {
@@ -214,17 +310,45 @@ function Dashboard() {
       const data = await response.json();
 
       if (data.success) {
-        setAvailableMocks(data.availableMocks);
-        if (data.availableMocks.length > 0) {
-          setSelectedMock(data.availableMocks[0].id);
+        console.log("Mocks data:", data);
+        
+        const mockTests = [];
+        
+        if (data.availableMocks && data.availableMocks.length > 0) {
+          data.availableMocks.forEach(mockGroup => {
+            mockTests.push({
+              id: mockGroup.id.toString(),
+              displayName: `Mock Test ${mockGroup.id}`,
+              originalId: mockGroup.id,
+              passageCount: mockGroup.count
+            });
+          });
+          
+          setAvailableMocks(mockTests);
+          if (mockTests.length > 0) {
+            setSelectedMock(mockTests[0].id);
+          }
+        } else {
+          const fallbackMocks = [1, 2, 3, 4, 5].map(id => ({
+            id: id.toString(),
+            displayName: `Mock Test ${id}`,
+            originalId: id,
+            passageCount: 1
+          }));
+          setAvailableMocks(fallbackMocks);
+          setSelectedMock("1");
         }
       }
     } catch (error) {
       console.error("Error fetching mocks:", error);
-      setAvailableMocks([
-        { id: 1, name: "Mock Test 1", count: 1 },
-        { id: 2, name: "Mock Test 2", count: 1 },
-      ]);
+      const fallbackMocks = [1, 2, 3, 4, 5].map(id => ({
+        id: id.toString(),
+        displayName: `Mock Test ${id}`,
+        originalId: id,
+        passageCount: 1
+      }));
+      setAvailableMocks(fallbackMocks);
+      setSelectedMock("1");
     }
   };
 
@@ -235,31 +359,43 @@ function Dashboard() {
       setParagraphError("");
       setParagraphText("");
 
+      let mockId = mock;
+      if (mock && mock.includes('-')) {
+        mockId = mock.split('-')[0];
+      }
+
       const params = new URLSearchParams({
-        mock: mock || 1,
-        wordCount: passage || 200,
+        mock: mockId || 1,
         timestamp: new Date().getTime(),
       });
 
-      if (time && time !== "free") {
+      if (time && time !== "Free") {
         const timeValue = time.includes("Min") ? time.split(" ")[0] : time;
         params.append("time", `${timeValue} Min`);
+      } else {
+        params.append("time", "There is no time limit for this test");
       }
 
       const apiUrl = `${API_BASE_URL}/paragraphs/${language}?${params.toString()}`;
+      console.log("Fetching from URL:", apiUrl);
+      
       const response = await fetch(apiUrl);
       const data = await response.json();
+      console.log("I am a paragraph", data);
 
-      if (data.success && data.paragraph) {
-        let finalText = data.paragraph;
-        const requestedWords = passage || 200;
-
-        const words = finalText.trim().split(/\s+/);
-        if (words.length > requestedWords) {
-          finalText = words.slice(0, requestedWords).join(" ");
+      if (data.success) {
+        if (data.paragraphs && Array.isArray(data.paragraphs) && data.paragraphs.length > 0) {
+          const randomIndex = Math.floor(Math.random() * data.paragraphs.length);
+          const selectedParagraph = data.paragraphs[randomIndex];
+          setParagraphText(selectedParagraph.text);
+          console.log(`Mock ${mockId} has ${data.paragraphs.length} paragraphs available`);
+        } 
+        else if (data.paragraph) {
+          setParagraphText(data.paragraph);
         }
-
-        setParagraphText(finalText);
+        else {
+          throw new Error("No paragraph found in response");
+        }
       } else {
         setParagraphError("Failed to load paragraph from server");
         const fallbackText = generateUniqueFallback(language, passage, mock);
@@ -281,7 +417,7 @@ function Dashboard() {
 
   // Generate unique fallback text based on parameters
   const generateUniqueFallback = (language, wordCount, mock) => {
-    const words = wordCount || 200;
+    const words = wordCount || 500;
     const mockNum = mock || 1;
     const seed = `${language}-${words}-${mockNum}`;
 
@@ -394,8 +530,10 @@ function Dashboard() {
   };
 
   const handleMockChange = (e) => {
-    const value = parseInt(e.target.value, 10);
+    const value = e.target.value;
     setSelectedMock(value);
+    
+    console.log("Selected mock:", value);
 
     if (testStarted) {
       if (window.confirm("Changing mock will reset the test. Continue?")) {
@@ -482,6 +620,17 @@ function Dashboard() {
     }, 100);
   };
 
+// FIXED: Calculate live stats with accurate word-by-word comparison
+const calculateLiveStats = useCallback((inputText) => {
+    const stats = analyzeTypingLive(
+    paragraphText,
+    inputText
+    );
+    console.log("Live stats:", stats);
+    setLiveStats(stats);
+}, [paragraphText]);
+
+  
   // Start test
   const startTest = () => {
     if (testStarted) {
@@ -490,34 +639,56 @@ function Dashboard() {
         return;
       }
     }
-
+    
     setTestStarted(true);
     setTestCompleted(false);
     setShowResults(false);
-    const timeInSeconds =
-      selectedTime === "free" ? 0 : parseInt(selectedTime) * 60;
-    setTimeLeft(timeInSeconds > 0 ? timeInSeconds : 9999);
     setUserInput("");
     setWpm(0);
     setAccuracy(100);
+    setTotalTypedWords(0);
+    
+    // Reset live stats
+    const totalWords = paragraphText ? paragraphText.trim().split(/\s+/).filter(w => w.length > 0).length : 0;
+    setLiveStats({
+      typedWords: 0,
+      totalWords: totalWords,
+      wpm: 0,
+      accuracy: 100,
+      correctWords: 0,
+      incorrectWords: 0,
+      incorrectWordPositions: []
+    });
+    
     startTimeRef.current = new Date();
+
+    // Handle free time correctly
+    if (selectedTime === "Free") {
+      setTimeLeft(0);
+      alert("Test started! You have unlimited time for practice.");
+    } else {
+      const timeValue = parseInt(selectedTime.split(' ')[0], 10);
+      
+      if (isNaN(timeValue) || timeValue <= 0) {
+        console.error("Invalid time value:", selectedTime);
+        setTimeLeft(300);
+      } else {
+        setTimeLeft(timeValue * 60);
+      }
+      
+      alert(`Test started! You have ${selectedTime} to complete the test.`);
+    }
 
     setTimeout(() => {
       if (textareaRef.current) {
         textareaRef.current.focus();
       }
     }, 100);
-
-    alert(
-      `Test started! You have ${
-        selectedTime === "free" ? "unlimited" : selectedTime
-      }.`
-    );
   };
 
   // Timer effect
   useEffect(() => {
-    if (testStarted && timeLeft > 0 && selectedTime !== "free") {
+    if (testStarted && timeLeft > 0 && selectedTime !== "Free") {
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
@@ -537,119 +708,116 @@ function Dashboard() {
   }, [testStarted, timeLeft, selectedTime]);
 
   // End test
-  const endTest = async() => {
+  const endTest = async () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
     setTestStarted(false);
     setTestCompleted(true);
-    const results = calculateResults(); 
-    // calculateResults();
+    const results = calculateResults();
     setShowResults(true);
     await saveResultsToAPI(results);
   };
 
- const saveResultsToAPI = async (resultsData) => {
-  try {
-    const token = localStorage.getItem("token");
+  const saveResultsToAPI = async (resultsData) => {
+    try {
+      const token = localStorage.getItem("token");
 
-    const response = await fetch(`${process.env.REACT_APP_API_URL}/api/save-result`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        userName: user?.username,
-        wordsTyped: resultsData.typedWords,
-        accuracy: resultsData.accuracy,
-        timeTaken: resultsData.timeTaken,
-        language: currentLanguage,
-        font: currentFont,
-      }),
-    });
+      const response = await fetch(`${API_BASE_URL}/save-result`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          userName: user?.username,
+          wordsTyped: resultsData.typedWords,
+          accuracy: resultsData.accuracy,
+          timeTaken: resultsData.timeTaken,
+          language: currentLanguage,
+          font: currentFont,
+        }),
+      });
 
-    // Check if the response is OK before parsing JSON
-    if (!response.ok) {
-      const text = await response.text(); // read raw text for debugging
-      console.error("API returned error:", text);
-      throw new Error("Failed to save results");
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("API returned error:", text);
+        throw new Error("Failed to save results");
+      }
+
+      const data = await response.json();
+      console.log("Saved:", data);
+    } catch (error) {
+      console.error("Error saving results:", error);
     }
+  };
 
-    const data = await response.json();
-    console.log("Saved:", data);
-  } catch (error) {
-    console.error("Error saving results:", error);
-  }
-};
-
-  // Calculate results
+  // FIXED: Calculate results function
   const calculateResults = () => {
-    if (!startTimeRef.current || userInput.trim() === "") {
+    if (!startTimeRef.current) {
       const emptyResults = {
         wpm: 0,
         accuracy: 0,
         totalWords: 0,
         typedWords: 0,
-        totalCharacters: 0,
-        correctCharacters: 0,
+        correctWords: 0,
+        incorrectWords: 0,
         timeTaken: 0,
-        errors: 0,
         date: new Date().toLocaleString(),
       };
-      setWpm(0);
-      setAccuracy(0);
       setTestResults(emptyResults);
       return emptyResults;
     }
 
-    const reference = paragraphText || getCurrentPracticeText().text;
+    const reference = paragraphText;
     const typed = userInput;
 
-    let correctChars = 0;
-    let errors = 0;
-    const minLength = Math.min(typed.length, reference.length);
+    // Split into words
+    const referenceWords = reference.trim().split(/\s+/);
+    const referenceWordsClean = referenceWords.map(w => 
+      w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').toLowerCase()
+    );
+    
+    const typedWords = typed.trim().split(/\s+/);
+    const typedWordsClean = typedWords.map(w => 
+      w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').toLowerCase()
+    );
 
-    for (let i = 0; i < minLength; i++) {
-      if (typed[i] === reference[i]) {
-        correctChars++;
+    let correctWords = 0;
+    let incorrectWords = 0;
+    
+    for (let i = 0; i < typedWords.length; i++) {
+      if (i < referenceWords.length) {
+        if (typedWordsClean[i] === referenceWordsClean[i]) {
+          correctWords++;
+        } else {
+          incorrectWords++;
+        }
       } else {
-        errors++;
+        incorrectWords++;
       }
     }
 
-    if (typed.length > reference.length) {
-      errors += typed.length - reference.length;
-    } else if (typed.length < reference.length) {
-      errors += reference.length - typed.length;
-    }
+    const accuracyValue = typedWords.length > 0 
+      ? Math.round((correctWords / typedWords.length) * 100) 
+      : 100;
 
-    const newAccuracy =
-      minLength > 0 ? Math.round((correctChars / minLength) * 100) : 100;
-    setAccuracy(newAccuracy);
+    const timeElapsedMs = (new Date() - startTimeRef.current);
+    const timeElapsedMinutes = timeElapsedMs / 1000 / 60;
+    const timeElapsedSeconds = timeElapsedMs / 1000;
 
-    const timeElapsed = (new Date() - startTimeRef.current) / 1000 / 60;
-    const words = typed
-      .trim()
-      .split(/\s+/)
-      .filter((w) => w.length > 0).length;
-    const newWpm = timeElapsed > 0 ? Math.round(words / timeElapsed) : words;
-    setWpm(newWpm);
-
-    const totalWords = reference
-      .trim()
-      .split(/\s+/)
-      .filter((w) => w.length > 0).length;
+    const wpmValue = timeElapsedMinutes > 0 
+      ? Math.round(typedWords.length / timeElapsedMinutes) 
+      : typedWords.length;
 
     const results = {
-      wpm: newWpm,
-      accuracy: newAccuracy,
-      totalWords: totalWords,
-      typedWords: words,
-      totalCharacters: reference.length,
-      correctCharacters: correctChars,
-      timeTaken: timeElapsed * 60,
-      errors: errors,
+      wpm: wpmValue,
+      accuracy: accuracyValue,
+      totalWords: referenceWords.length,
+      typedWords: typedWords.length,
+      correctWords: correctWords,
+      incorrectWords: incorrectWords,
+      timeTaken: timeElapsedSeconds,
       date: new Date().toLocaleString(),
     };
 
@@ -665,12 +833,34 @@ function Dashboard() {
     setTestStarted(false);
     setTestCompleted(false);
     setShowResults(false);
-    const timeInSeconds =
-      selectedTime === "free" ? 0 : parseInt(selectedTime) * 60;
-    setTimeLeft(timeInSeconds > 0 ? timeInSeconds : 9999);
+
+    if (selectedTime === "Free") {
+      setTimeLeft(0);
+    } else {
+      const timeValue = parseInt(selectedTime.split(' ')[0], 10);
+      if (isNaN(timeValue) || timeValue <= 0) {
+        setTimeLeft(300);
+      } else {
+        setTimeLeft(timeValue * 60);
+      }
+    }
+
     setUserInput("");
     setWpm(0);
     setAccuracy(100);
+    setTotalTypedWords(0);
+    
+    // Reset live stats
+    const totalWords = paragraphText ? paragraphText.trim().split(/\s+/).filter(w => w.length > 0).length : 0;
+    setLiveStats({
+      typedWords: 0,
+      totalWords: totalWords,
+      wpm: 0,
+      accuracy: 100,
+      correctWords: 0,
+      incorrectWords: 0,
+      incorrectWordPositions: []
+    });
 
     setTimeout(() => {
       if (textareaRef.current) {
@@ -681,8 +871,21 @@ function Dashboard() {
 
   // Handle input change
   const handleInputChange = useCallback((e) => {
-    setUserInput(e.target.value);
-  }, []);
+    const value = e.target.value;
+    setUserInput(value);
+    
+    // Calculate live stats
+    if (testStarted && startTimeRef.current) {
+      calculateLiveStats(value);
+    }
+  }, [testStarted, calculateLiveStats]);
+
+  // Handle key down for backspace restriction
+  const handleKeyDown = (e) => {
+    if (!correctionEnabled && e.key === "Backspace") {
+      e.preventDefault();
+    }
+  };
 
   // Load practice text
   const loadPracticeText = (index) => {
@@ -702,7 +905,7 @@ function Dashboard() {
 
   // Get word count
   const getWordCount = () => {
-    return paragraphText.trim().split(/\s+/).length;
+    return paragraphText ? paragraphText.trim().split(/\s+/).filter(w => w.length > 0).length : 0;
   };
 
   // Get font style class
@@ -724,7 +927,7 @@ function Dashboard() {
     return "";
   };
 
-  // Get English typing equivalent for current Hindi text
+  // Get English typing equivalent
   const getEnglishTypingEquivalent = () => {
     if (currentLanguage === "hindi" && practiceTexts.hindi[currentText]) {
       return practiceTexts.hindi[currentText].englishTypingEquivalent;
@@ -762,12 +965,12 @@ function Dashboard() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-           userName: user?.username || user?.email,
-           wordsTyped: testResults.typedWords,
-           accuracy: testResults.accuracy,
-           timeTaken: Math.round(testResults.timeTaken),
-           font: currentFont,
-           language: currentLanguage,
+          userName: user?.username || user?.email,
+          wordsTyped: testResults.typedWords,
+          accuracy: testResults.accuracy,
+          timeTaken: Math.round(testResults.timeTaken),
+          font: currentFont,
+          language: currentLanguage,
         }),
       });
 
@@ -778,29 +981,36 @@ function Dashboard() {
         alert("Failed to save results.");
       }
     } catch (error) {
-      // console.error("Error saving results:", error);
       alert("Error saving results. Please try again.");
     }
   };
 
   // Format time display
   const formatTime = (seconds) => {
-    if (selectedTime === "free") return "∞";
+    if (selectedTime === "Free") return "∞";
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
   };
 
   // Handle logout
-const handleLogout = () => {
-  // Clear auth/session first
-  logout();
+  const handleLogout = () => {
+    logout();
+    //  return <button onClick={logout}>Logout</button>;
+     navigate("${API_BASE_URL}/login", { replace: true });
+  };
 
-  // Redirect immediately to frontend login page
-  window.location.href = "https://typingapplication-1.onrender.com/api/login";
-};
+  // Update total words when paragraph changes
+  useEffect(() => {
+    if (paragraphText) {
+      setLiveStats(prev => ({
+        ...prev,
+        totalWords: paragraphText.trim().split(/\s+/).filter(w => w.length > 0).length
+      }));
+    }
+  }, [paragraphText]);
 
-  // ✅ Show loading while auth is loading
+  // Show loading while auth is loading
   if (loading) {
     return (
       <div className="loading-screen">
@@ -841,7 +1051,6 @@ const handleLogout = () => {
             currentLanguage={currentLanguage}
             testType={testType}
             selectedTime={selectedTime}
-            selectedPassage={selectedPassage}
             selectedMock={selectedMock}
             onPracticeAgain={resetTest}
             onSaveResults={handleSaveResults}
@@ -895,7 +1104,7 @@ const handleLogout = () => {
                 </div>
               </div>
 
-              {/* New dropdowns row */}
+              {/* Dropdowns row */}
               <div className="controls-row dropdowns-row">
                 <div className="control-group">
                   <label>Time Duration:</label>
@@ -908,7 +1117,7 @@ const handleLogout = () => {
                     >
                       {timeOptions.map((time) => (
                         <option key={time} value={time}>
-                          {time === "free" ? "Free Practice" : time}
+                          {time === "Free" ? "Free Practice" : time}
                         </option>
                       ))}
                     </select>
@@ -916,23 +1125,32 @@ const handleLogout = () => {
                   </div>
                 </div>
 
-                <div className="control-group">
-                  <label>Passage Length:</label>
-                  <div className="select-wrapper">
-                    <select
-                      value={selectedPassage}
-                      onChange={handlePassageChange}
+                {/* Correction Toggle */}
+                <div className="control-group correction-toggle">
+                  <label>Correction Mode:</label>
+                  <div className="toggle-switch">
+                    <button
+                      className={`toggle-btn ${correctionEnabled ? 'active' : ''}`}
+                      onClick={() => setCorrectionEnabled(true)}
                       disabled={testStarted}
-                      className="passage-select"
+                      type="button"
                     >
-                      {passageOptions.map((passage) => (
-                        <option key={passage} value={passage}>
-                          {passage} words
-                        </option>
-                      ))}
-                    </select>
-                    <div className="select-arrow">▼</div>
+                      ✓ Enable
+                    </button>
+                    <button
+                      className={`toggle-btn ${!correctionEnabled ? 'active' : ''}`}
+                      onClick={() => setCorrectionEnabled(false)}
+                      disabled={testStarted}
+                      type="button"
+                    >
+                      ✗ Disable
+                    </button>
                   </div>
+                  <small className="toggle-note">
+                    {correctionEnabled 
+                      ? "You can correct mistakes (Backspace allowed)" 
+                      : "No corrections allowed (Backspace disabled)"}
+                  </small>
                 </div>
 
                 <div className="control-group">
@@ -947,11 +1165,11 @@ const handleLogout = () => {
                       {availableMocks.length > 0 ? (
                         availableMocks.map((mock) => (
                           <option key={mock.id} value={mock.id}>
-                            {mock.name} ({mock.count} passages)
+                            {mock.displayName}
                           </option>
                         ))
                       ) : (
-                        <option value={1}>Mock 1</option>
+                        <option value="1">Mock Test 1</option>
                       )}
                     </select>
                     <div className="select-arrow">▼</div>
@@ -960,7 +1178,7 @@ const handleLogout = () => {
               </div>
             </div>
 
-            {/* Loading Indicator for paragraph */}
+            {/* Loading Indicator */}
             {paragraphLoading && (
               <div className="loading-message">
                 <div className="loading-spinner"></div>
@@ -968,7 +1186,7 @@ const handleLogout = () => {
               </div>
             )}
 
-            {/* Error Message for paragraph */}
+            {/* Error Message */}
             {paragraphError && (
               <div className="error-message">
                 <p>⚠️ {paragraphError} (Using fallback text)</p>
@@ -996,18 +1214,32 @@ const handleLogout = () => {
             )}
 
             {/* Timer Display */}
-            {testStarted && selectedTime !== "free" && (
+            {testStarted && selectedTime !== "Free" && (
               <div className="timer-display-top">
                 <div className="timer-box">
                   <span className="timer-label">Time Remaining:</span>
-                  <span className="timer-value">{formatTime(timeLeft)}</span>
+                  <span className="timer-value">
+                    {!isNaN(timeLeft) && timeLeft !== null ? formatTime(timeLeft) : "00:00"}
+                  </span>
                   <div className="timer-progress">
                     <div
                       className="timer-progress-bar"
                       style={{
-                        width: `${
-                          (timeLeft / (parseInt(selectedTime) * 60)) * 100
-                        }%`,
+                        width: (() => {
+                          if (!timeLeft || isNaN(timeLeft) || selectedTime === "Free") {
+                            return '0%';
+                          }
+                          
+                          const minutes = parseInt(selectedTime.split(' ')[0], 10);
+                          if (isNaN(minutes) || minutes <= 0) {
+                            return '0%';
+                          }
+                          
+                          const totalSeconds = minutes * 60;
+                          const percentage = (timeLeft / totalSeconds) * 100;
+                          
+                          return `${Math.min(100, Math.max(0, percentage))}%`;
+                        })()
                       }}
                     ></div>
                   </div>
@@ -1015,10 +1247,20 @@ const handleLogout = () => {
               </div>
             )}
 
+            {/* Practice Mode Indicator */}
+            {testStarted && selectedTime === "Free" && (
+              <div className="practice-mode-indicator">
+                <div className="practice-badge">
+                  <span className="practice-icon">🎯</span>
+                  <span className="practice-text">Practice Mode - No Time Limit</span>
+                </div>
+              </div>
+            )}
+
             {/* Main Typing Section */}
-            <div className="typing-main-section">
-              {/* Left side: Passage Display */}
-              <div className="passage-display-section">
+            <div className="typing-main-section-stacked">
+              {/* Top: Passage Display */}
+              <div className="passage-display-section-full">
                 <div className="section-header">
                   <h3>Type the text below:</h3>
                   <div className="section-meta">
@@ -1042,8 +1284,8 @@ const handleLogout = () => {
                 </div>
               </div>
 
-              {/* Right side: Typing Area */}
-              <div className="typing-input-section">
+              {/* Bottom: Typing Area */}
+              <div className="typing-input-section-full">
                 <div className="section-header">
                   <h3>Your Typing:</h3>
 
@@ -1080,7 +1322,7 @@ const handleLogout = () => {
                       onClick={() => {
                         const results = calculateResults();
                         alert(
-                          `Current Results:\nWPM: ${results.wpm}\nAccuracy: ${results.accuracy}%`
+                          `Current Results:\nWPM: ${results.wpm}\nAccuracy: ${results.accuracy}%\nCorrect Words: ${results.correctWords}\nIncorrect Words: ${results.incorrectWords}`
                         );
                       }}
                     >
@@ -1091,11 +1333,10 @@ const handleLogout = () => {
 
                 {/* Typing Input Area */}
                 <div className="typing-container">
-                  <textarea
-                    ref={textareaRef}
-                    className={`typing-input ${getFontStyleClass()}`}
+                  <HighlightedTextarea
                     value={userInput}
                     onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
                     disabled={!testStarted}
                     placeholder={
                       currentLanguage === "hindi"
@@ -1104,39 +1345,37 @@ const handleLogout = () => {
                           : "Switch to Hindi keyboard (Win+Space) and type phonetically"
                         : "Type the text above..."
                     }
-                    autoFocus
+                    className="typing-input"
+                    fontClass={getFontStyleClass()}
+                    incorrectWordPositions={liveStats.incorrectWordPositions}
+                    autoFocus={testStarted}
                   />
                 </div>
+
+                {/* Correction Mode Indicator */}
+                {testStarted && !correctionEnabled && (
+                  <div className="correction-warning">
+                    ⚠️ Correction mode is disabled - You cannot use backspace
+                  </div>
+                )}
 
                 {/* Typing Stats */}
                 <div className="typing-stats-bottom">
                   <div className="stat-item">
-                    <span className="stat-label">Characters:</span>
-                    <span className="stat-value">
-                      {userInput.length}/{paragraphText.length}
-                    </span>
+                    <span className="stat-label">Typed Words</span>
+                    <span className="stat-value">{liveStats.typedWords}</span>
                   </div>
                   <div className="stat-item">
-                    <span className="stat-label">Progress:</span>
-                    <span className="stat-value">
-                      {userInput.length > 0
-                        ? Math.min(
-                            Math.round(
-                              (userInput.length / paragraphText.length) * 100
-                            ),
-                            100
-                          )
-                        : 0}
-                      %
-                    </span>
+                    <span className="stat-label">Total Words</span>
+                    <span className="stat-value">{liveStats.totalWords}</span>
                   </div>
                   <div className="stat-item">
-                    <span className="stat-label">WPM:</span>
-                    <span className="stat-value">{wpm}</span>
+                    <span className="stat-label">WPM</span>
+                    <span className="stat-value">{liveStats.wpm}</span>
                   </div>
                   <div className="stat-item">
-                    <span className="stat-label">Accuracy:</span>
-                    <span className="stat-value">{accuracy}%</span>
+                    <span className="stat-label">Accuracy</span>
+                    <span className="stat-value">{liveStats.accuracy}%</span>
                   </div>
                 </div>
               </div>
