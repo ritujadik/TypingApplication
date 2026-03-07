@@ -16,8 +16,8 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem("token") || null);
 
-  // const API_BASE_URL = "https://typingapplication-1.onrender.com/api";
-  const API_BASE_URL = "http://localhost:5000/api";
+  const API_BASE_URL = "https://typingapplication-1.onrender.com/api";
+  // const API_BASE_URL = "http://localhost:5000/api";
 
   // Check if user is logged in on initial load
   useEffect(() => {

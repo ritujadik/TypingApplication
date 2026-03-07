@@ -169,7 +169,7 @@ function Dashboard() {
   // // API base URL
   // const API_BASE_URL = "http://localhost:5000/api";
   // API base URL
-  const API_BASE_URL = "https://typingapplication-1.onrender.com";
+  const API_BASE_URL = "https://typingapplication-1.onrender.com/api";
 
   // All available fonts for government exams
   const allFonts = {
