@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const OTP = require('../models/User_OTP');
+const e = require('express');
 
 const router = express.Router();
 
@@ -12,8 +13,48 @@ const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString()
 // Send OTP (placeholder)
 const sendOTP = async (emailOrMobile, otp) => {
     console.log(`Sending OTP ${otp} to ${emailOrMobile}`);
-    // Integrate email/SMS sending here if needed
-};
+    try{
+        // Convert to string to ensure includes() works
+        const identifier = String(emailOrMobile);
+        
+        const query = identifier.includes('@') 
+            ? { email: identifier } 
+            : { mobile: identifier };
+        
+        const user = await User.findOne(query);
+
+        if(!user){
+            console.log(`User not found for sending OTP to ${identifier}`);
+            return false; // Changed: False -> false
+        }
+        
+        // Delete any existing OTPs for this user (optional but recommended)
+        await OTP.deleteMany({ 
+            userId: user._id, 
+            type: "reset_password" 
+        });
+        
+        const otpRecord = await OTP.create({ 
+            userId: user._id,
+            otp: otp.toString(), 
+            type: "reset_password",
+            expiresAt: new Date(Date.now() + 5 * 60 * 1000) 
+        });
+        
+        console.log("OTP saved to database:", {
+            id: otpRecord._id,
+            userId: user._id,
+            otp: otp,
+            expiresAt: otpRecord.expiresAt
+        });
+        
+        return true; // Changed: True -> true
+        
+    } catch(error){
+        console.error("Error sending OTP:", error);
+        return false; // Changed: False -> false
+    }
+}
 
 // Signup route
 router.post('/signup', async (req, res) => {
@@ -113,26 +154,48 @@ router.post("/forgot-password", async (req, res) => {
 router.post("/verify-otp", async (req, res) => {
   const { email, mobile, otp, type } = req.body;
   
-  console.log("Received verification request:", { email, mobile, otp });
-
+    console.log("=== OTP Verification Request ===");
+    console.log("Request body:", { email, mobile, otp, type });
+    console.log("Request headers:", req.headers);
   if (!otp || (!email && !mobile)) {
+     console.log("Missing required fields");
     return res.status(400).json({ error: "OTP and email/mobile are required" });
   }
 
   try {
+    console.log("Looking for user with:", { email, mobile });
     // Find user by email or mobile
-    const user = await User.findOne({ $or: [{ email }, { mobile }] });
+    const query = [];
+    if (email) query.push({ email });
+    if (mobile) query.push({ mobile });
+    const user = await User.findOne({ $or: query });
+    console.log("User found:", user ? user._id : "No user found");
+    // const user = await User.findOne({ $or: [{ email }, { mobile }] });
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
     // Find valid OTP
+     console.log("Looking for OTP record with:", {
+      userId: user._id,
+      otp: otp,
+      type: type || "reset_password",
+      currentTime: new Date()
+    });
     const otpRecord = await OTP.findOne({
       userId: user._id,
       otp: otp,
       type: type || "reset_password",
       expiresAt: { $gt: new Date() }
     });
+        console.log("OTP record found:", otpRecord ? "Yes" : "No");
+    if (otpRecord) {
+      console.log("OTP details:", {
+        id: otpRecord._id,
+        createdAt: otpRecord.createdAt,
+        expiresAt: otpRecord.expiresAt
+      });
+    }
 
     if (!otpRecord) {
       return res.status(400).json({ error: "Invalid or expired OTP" });
@@ -143,8 +206,11 @@ router.post("/verify-otp", async (req, res) => {
 
     res.status(200).json({ message: "OTP verified successfully" });
   } catch (error) {
-    console.error("Error verifying OTP:", error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("=== ERROR in OTP verification ===");
+    console.error("Error name:", error.name);
+    console.error("Error message:", error.message);
+    console.error("Error stack:", error.stack);
+    res.status(500).json({ error: "Internal server error",details: error.message });
   }
 });
 
