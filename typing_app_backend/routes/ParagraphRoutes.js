@@ -6,58 +6,33 @@ const { getPassageByWordCountUtil } = require('../utils/getPassageByWordCount');
 
 router.post('/paragraph', async (req, res) => {
   try {
-    const { language, text, pattern, time } = req.body;
+    const { language, text } = req.body;
 
-    if (!language || !text || !time) {
+    if (!language || !text) {
       return res.status(400).json({
         success: false,
-        message: "Language, text and time are required"
+        message: "Language and text are required"
       });
     }
+    
+    console.log("📥 Received paragraph creation request - Language:", language, "Text length:", text.length);
 
-    let passage;
-    try {
-      passage = getPassageByWordCountUtil(text);
-    } catch (err) {
-      return res.status(400).json({
-        success: false,
-        message: err.message
-      });
-    }
+    // Calculate word count
+    const wordCount = text.trim().split(/\s+/).length;
 
-    const paragraphPattern = pattern || 'SSC';
-
-    const existingParagraph = await Paragraph.findOne({
-      language,
-      pattern: paragraphPattern,
-      time,
-      passage,
-      text
-    });
-
-    if (existingParagraph) {
-      return res.status(409).json({
-        success: false,
-        message: "Paragraph already exists"
-      });
-    }
-
+    // Find the highest mock number for this language
     const lastParagraph = await Paragraph.findOne({
-      language,
-      pattern: paragraphPattern,
-      time,
-      passage
+      language
     }).sort({ mock: -1 });
 
     const nextMock = lastParagraph ? lastParagraph.mock + 1 : 1;
 
+    // Create new paragraph without time and passage
     const newParagraph = new Paragraph({
       language,
-      pattern: paragraphPattern,
-      time,
-      passage,
       text,
-      mock: nextMock
+      mock: nextMock,
+      wordCount: wordCount
     });
 
     await newParagraph.save();
@@ -66,11 +41,10 @@ router.post('/paragraph', async (req, res) => {
       success: true,
       message: "Paragraph created successfully",
       data: {
+        id: newParagraph._id,
         language,
-        pattern: paragraphPattern,
-        time,
-        passage,
-        mock: nextMock
+        mock: nextMock,
+        wordCount: wordCount
       }
     });
 
@@ -78,7 +52,7 @@ router.post('/paragraph', async (req, res) => {
     console.error("❌ Paragraph API error:", error);
     res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Internal server error: " + error.message
     });
   }
 });
@@ -86,19 +60,12 @@ router.post('/paragraph', async (req, res) => {
 router.get('/paragraphs/:language', async (req, res) => {   
     try {
         let { language } = req.params;
-        const { mock, wordCount, passage, length } = req.query;
+        const { mock } = req.query;
+        console.log("📥 Request received - Language:", language, "Mock:", mock);
 
         // Clean the language parameter
         language = language.replace('}', '').trim().toLowerCase();
         
-        // Determine word count from various possible parameters
-        let requestedWords = 200; // Default
-        if (wordCount) requestedWords = parseInt(wordCount);
-        else if (passage) requestedWords = parseInt(passage);
-        else if (length) requestedWords = parseInt(length);
-        
-        console.log("📥 Request received - Language:", language, "Mock:", mock, "Words:", requestedWords);
-
         // Build filter
         const filter = { language };
         
@@ -110,18 +77,14 @@ router.get('/paragraphs/:language', async (req, res) => {
             }
         }
         
-        // ADD WORD COUNT FILTERING
-        // Since paragraphs have varying lengths, we need to find ones close to requested length
-        // We'll get all matching paragraphs and then filter by word count
-        
         console.log("🔍 Database filter:", filter);
 
-        // First get all paragraphs matching the language and mock
-        const allParagraphs = await Paragraph.find(filter);
+        // Get ALL paragraphs matching the language and mock
+        const paragraphs = await Paragraph.find(filter);
         
-        console.log("📊 Total paragraphs found:", allParagraphs.length);
+        console.log("📊 Total paragraphs found:", paragraphs.length);
         
-        if (!allParagraphs || allParagraphs.length === 0) {
+        if (!paragraphs || paragraphs.length === 0) {
             console.log("❌ No paragraphs found for filter:", filter);
             return res.status(404).json({ 
                 success: false,
@@ -129,46 +92,22 @@ router.get('/paragraphs/:language', async (req, res) => {
             });
         }
         
-        // Calculate word count for each paragraph
-        const paragraphsWithWordCount = allParagraphs.map(p => {
-            const wordCount = p.text.trim().split(/\s+/).length;
-            return {
-                ...p._doc,
-                actualWords: wordCount,
-                wordDiff: Math.abs(wordCount - requestedWords)
-            };
-        });
+        // Format all paragraphs
+        const allParagraphs = paragraphs.map(p => ({
+            text: p.text,
+            language: p.language,
+            mock: p.mock,
+            actualWords: p.text.trim().split(/\s+/).length
+        }));
         
-        // Filter paragraphs within ±20% of requested word count
-        const tolerance = requestedWords * 0.2; // 20% tolerance
-        const suitableParagraphs = paragraphsWithWordCount.filter(p => 
-            p.wordDiff <= tolerance
-        );
-        
-        console.log(`📊 Suitable paragraphs (within ${tolerance.toFixed(0)} words):`, suitableParagraphs.length);
-        
-        // If no paragraphs within tolerance, use closest one
-        let selectedParagraph;
-        if (suitableParagraphs.length === 0) {
-            console.log("⚠️ No paragraphs within tolerance, using closest match");
-            // Find paragraph with smallest difference
-            paragraphsWithWordCount.sort((a, b) => a.wordDiff - b.wordDiff);
-            selectedParagraph = paragraphsWithWordCount[0];
-        } else {
-            // Randomly select from suitable paragraphs
-            const randomIndex = Math.floor(Math.random() * suitableParagraphs.length);
-            selectedParagraph = suitableParagraphs[randomIndex];
-        }
-        
-        console.log(`✅ Sending paragraph - Words: ${selectedParagraph.actualWords} (requested: ${requestedWords})`);
+        console.log(`✅ Sending ${allParagraphs.length} paragraphs for ${language} mock ${mock || 'all'}`);
         
         res.json({ 
             success: true,
-            paragraph: selectedParagraph.text,
-            language: selectedParagraph.language,
-            mock: selectedParagraph.mock,
-            actualWords: selectedParagraph.actualWords,
-            requestedWords: requestedWords
+            paragraphs: allParagraphs, // Send ALL paragraphs
+            count: allParagraphs.length,
+            language: language,
+            mock: mock || 'all'
         });
         
     } catch (error) {

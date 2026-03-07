@@ -4,25 +4,25 @@ const paragraphSchema = new mongoose.Schema({
   language: {
     type: String,
     required: true,
-    enum: ['english', 'hindi', 'thai']
+    enum: ['english', 'hindi']
   },
 
-  pattern: {
-    type: String,
-    enum: ['SSC', 'UPSC', 'RPSC', 'UPSTATE', 'Others'],
-    default: 'SSC'
-  },
+  // pattern: {
+  //   type: String,
+  //   enum: ['SSC', 'UPSC', 'RPSC', 'UPSTATE', 'Others'],
+  //   default: 'SSC'
+  // },
 
   time: {
     type: String,
-    required: true,
-    enum: ['1 Min', '2 Min', '5 Min', '10 Min', '15 Min', 'free']
+    required: false,
+    enum: ['5 Min', '10 Min', '15 Min', 'Free']
   },
 
   passage: {
     type: Number,
-    required: true,
-    enum: [200, 300, 500, 1000]
+    required: false,
+    enum: [500, 1000,1500,1800]
   },
 
   mock: {
