@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react"; // Add useEffect
 import axios from "axios";
 import "./ForgotPasswordFlow.css";
 
-const API_BASE_URL = "http://localhost:5000/api";
+// const API_BASE_URL = "http://localhost:5000/api";
+const API_BASE_URL = "https://typingapplication-1.onrender.com/api";
 
 const ForgotPassword = ({ onOTPSent }) => {
   const [emailOrMobile, setEmailOrMobile] = useState("");
